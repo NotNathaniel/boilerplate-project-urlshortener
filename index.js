@@ -1,37 +1,57 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const app = express();
+const dns = require('dns');
 
-// Basic Configuration
+const app = express();
 const port = process.env.PORT || 3000;
 
-app.use(cors());
+// Store URLs in memory (array index = short URL)
+const urlDB = [];
 
+app.use(cors());
+app.use(express.urlencoded({ extended: true }));
+
+// Serve static assets
 app.use('/public', express.static(`${process.cwd()}/public`));
 
-app.get('/', function(req, res) {
+// Index page
+app.get('/', (req, res) => {
   res.sendFile(process.cwd() + '/views/index.html');
 });
 
-// Your first API endpoint
-app.get('/api/hello', function(req, res) {
+// Sample endpoint
+app.get('/api/hello', (req, res) => {
   res.json({ greeting: 'hello API' });
 });
 
-app.post("/api/shorturl/:original_url", function(req,res){
-  const original_url = req.params.original_url
-  dns.lookup(original_url, (err, address, family) => {
-    if (err){
-    res.json({error: "invalid url"});
+// POST: Shorten a URL
+app.post('/api/shorturl', (req, res) => {
+  const originalUrl = req.body.url;
+  let hostname;
+  try {
+    hostname = new URL(originalUrl).hostname;
+  } catch {
+    return res.json({ error: 'invalid url' });
   }
-    res.json({original_url: address, short_url: family});
+
+  dns.lookup(hostname, (err, address) => {
+    if (err || !address) return res.json({ error: 'invalid url' });
+
+    // Add URL to "database" (in memory)
+    const shortUrl = urlDB.push(originalUrl); // push returns new length
+    res.json({ original_url: originalUrl, short_url: shortUrl });
+  });
 });
 
+// GET: Redirect to original URL
+app.get('/api/shorturl/:shortid', (req, res) => {
+  const shortid = parseInt(req.params.shortid, 10);
+  const originalUrl = urlDB[shortid - 1]; // array is zero-indexed
+  if (!originalUrl) return res.json({ error: 'invalid url' });
+  res.redirect(originalUrl);
+});
 
-  res.json({original_url: original_url, short_url: short_url});
-})
-
-app.listen(port, function() {
+app.listen(port, () => {
   console.log(`Listening on port ${port}`);
 });
